@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends procps && rm -r
 COPY --from=builder /root/.local /home/appuser/.local
 
 COPY app/ ./app/
+COPY tests/ ./tests/
 COPY .env.example .env
 
 RUN useradd -m -u 1000 appuser
@@ -21,7 +22,7 @@ USER appuser
 ENV PATH=/home/appuser/.local/bin:$PATH
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD python -c "import requests; requedocker compsts.get('http://127.0.0.1:8000/health').raise_for_status()"
+  CMD python -c "import requests; requests.get('http://127.0.0.1:8000/health').raise_for_status()"
 
 EXPOSE 8000
 
