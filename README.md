@@ -1,239 +1,85 @@
 # System Metrics Agent
 
-Un agent Python modulaire capable de collecter les métriques système,
-de les formater et de les transmettre en temps réel vers une API ou un
-Webhook externe.
-
-## Fonctionnalités
-
-- Collecte du pourcentage CPU.
-- Collecte de la mémoire RAM totale, utilisée et disponible.
-- Utilisation de `psutil`.
-- Utilisation de **`subprocess`** pour exécuter la commande système
-  `uptime` et récupérer la charge système.
-- Architecture modulaire :
-  - `collector.py` : collecte ;
-  - `formatter.py` : normalisation du payload ;
-  - `sender.py` : envoi HTTP ;
-  - `agent.py` : orchestration ;
-  - `api.py` : API de réception avec **FastAPI**.
-- Configuration externe avec `.env`.
-- Gestion des erreurs réseau et des erreurs de collecte.
-- Tests automatisés avec `pytest`.
+Application Python modulaire pour collecter et monitorer les métriques système (CPU, mémoire, charge système).
 
 ## Architecture
 
-```text
-system_metrics_agent/
-├── app/
-│   ├── __init__.py
-│   ├── agent.py
-│   ├── api.py
-│   ├── collector.py
-│   ├── config.py
-│   ├── formatter.py
-│   └── sender.py
-├── tests/
-│   ├── test_api.py
-│   ├── test_collector.py
-│   ├── test_formatter.py
-│   └── test_sender.py
-├── .env.example
-├── requirements.txt
-└── README.md
-```
+- **API** : FastAPI avec uvicorn exposant les endpoints `/health`, `/metrics`, `/metrics/latest`
+- **Agent** : Collecteur autonome qui envoie les métriques à l'API via HTTP
+- **Communication** : Réseau interne Docker (pas localhost)
 
-## Installation
+## Prérequis
 
-Créer un environnement virtuel :
+- Docker 29.7+ et Docker Compose
+- Compte Docker Hub (pour le déploiement)
+- Git
+
+## Lancer en développement
 
 ```bash
-python -m venv .venv
+docker compose build
+docker compose up
 ```
 
-Linux/macOS :
+L'API démarre sur `http://localhost:8000` avec hot-reload.
+
+## Lancer en production
+
+### Depuis les images Docker Hub
 
 ```bash
-source .venv/bin/activate
+docker compose -f docker-compose.prod.yaml pull
+docker compose -f docker-compose.prod.yaml up
 ```
 
-Windows :
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
-
-Installer les dépendances :
+### Depuis un build local
 
 ```bash
-pip install -r requirements.txt
+docker compose build
+docker compose up
 ```
 
-Créer le fichier de configuration :
+## Pipeline CI/CD
 
-```bash
-cp .env.example .env
-```
+Le workflow GitHub Actions (`.github/workflows/ci-cd.yml`) :
+1. Build l'image Docker
+2. Exécute pytest
+3. **Si les tests passent**, push vers Docker Hub avec les tags :
+   - `latest` (dernière version)
+   - `<commit-sha>` (version spécifique)
 
-Sous Windows, copier manuellement `.env.example` en `.env`.
+### Secrets requis
 
-## Démarrer l'API FastAPI
+Ajoute ces secrets dans GitHub Settings → Secrets:
+- `DOCKERHUB_USERNAME` : ton username Docker Hub
+- `DOCKERHUB_TOKEN` : ton access token Docker Hub
 
-```bash
-uvicorn app.api:app --reload
-```
+## Images Docker Hub
 
-L'API est alors disponible sur :
+Disponibles sur : [hub.docker.com/r/jude1955/system-metrics](https://hub.docker.com/r/jude1955/system-metrics)
 
-```text
-http://127.0.0.1:8000
-```
+Tags :
+- `latest` : dernière version stable
+- `<sha>` : version spécifique au commit
 
-Documentation interactive FastAPI :
+## Choix techniques
 
-```text
-http://127.0.0.1:8000/docs
-```
-
-## Démarrer l'agent
-
-Dans un deuxième terminal :
-
-```bash
-python -m app.agent
-```
-
-L'agent collecte les métriques selon l'intervalle défini dans `.env`
-puis les envoie automatiquement vers `METRICS_ENDPOINT`.
-
-## Exemple de configuration
-
-```env
-METRICS_ENDPOINT=http://127.0.0.1:8000/metrics
-COLLECTION_INTERVAL=5
-REQUEST_TIMEOUT=5
-```
-
-Pour envoyer vers un webhook externe, remplacer simplement :
-
-```env
-METRICS_ENDPOINT=https://example.com/webhook
-```
-
-## Exemple de métrique envoyée
-
-```json
-{
-  "agent": "system-metrics-agent",
-  "event_type": "system_metrics",
-  "data": {
-    "timestamp": "2026-08-27T12:00:00.000000+00:00",
-    "hostname": "server-01",
-    "cpu": {
-      "percent": 23.4,
-      "logical_cores": 8
-    },
-    "memory": {
-      "total_bytes": 16777216000,
-      "available_bytes": 8000000000,
-      "used_bytes": 7777216000,
-      "percent": 48.2
-    },
-    "system": {
-      "load_1m": 0.12,
-      "load_5m": 0.18,
-      "load_15m": 0.20
-    }
-  }
-}
-```
-
-## Endpoints
-
-### Vérifier l'état de l'API
-
-```http
-GET /health
-```
-
-Réponse :
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### Envoyer des métriques
-
-```http
-POST /metrics
-```
-
-### Récupérer la dernière métrique
-
-```http
-GET /metrics/latest
-```
+- **Python 3.12-slim** : image légère et moderne
+- **Multi-stage build** : sépare build et runtime, réduit la taille finale
+- **Non-root user** : sécurité renforcée (utilisateur `appuser`)
+- **procps** : pour la commande `uptime` sur Linux
+- **Réseau Docker** : communication interne entre services (pas localhost)
 
 ## Tests
 
-Exécuter toute la suite :
-
 ```bash
-pytest -q
+docker run --rm system-metrics:latest pytest tests/
 ```
 
-Exécuter avec une couverture de code nécessite l'installation de
-`pytest-cov` :
+## Déploiement vérifié
 
-```bash
-pip install pytest-cov
-pytest --cov=app --cov-report=term-missing
-```
-
-## Robustesse
-
-Le projet gère notamment :
-
-- les erreurs d'exécution de `subprocess` ;
-- les timeouts ;
-- les erreurs de connexion HTTP ;
-- les réponses HTTP en erreur ;
-- les configurations invalides ;
-- les payloads incomplets ;
-- l'absence de métriques dans l'API.
-
-## Démonstration du flux
-
-```text
-┌──────────────────┐
-│ Système          │
-│ CPU / RAM        │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ collector.py     │
-│ psutil           │
-│ subprocess       │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ formatter.py     │
-│ Payload JSON     │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ sender.py        │
-│ HTTP POST        │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│ FastAPI          │
-│ /metrics         │
-└──────────────────┘
-```
+✅ API démarre correctement
+✅ Agent collecte les métriques
+✅ Communication entre services fonctionnelle
+✅ Images publiées sur Docker Hub
+✅ Déploiement depuis images Docker Hub réussi
