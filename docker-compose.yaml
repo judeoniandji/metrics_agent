@@ -1,0 +1,34 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: system-metrics-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    env_file: .env
+    networks:
+      - metrics-network
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: system-metrics-agent
+    depends_on:
+      - api
+    environment:
+      - PYTHONUNBUFFERED=1
+      - METRICS_ENDPOINT=http://api:8000/metrics
+      - COLLECTION_INTERVAL=10
+      - REQUEST_TIMEOUT=5
+    env_file: .env
+    networks:
+      - metrics-network
+    command: ["python", "-m", "app.agent"]
+
+networks:
+  metrics-network:
+    driver: bridge
