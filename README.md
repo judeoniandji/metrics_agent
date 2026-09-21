@@ -42,6 +42,7 @@ docker compose up
 ## Pipeline CI/CD
 
 Le workflow GitHub Actions (`.github/workflows/ci-cd.yml`) :
+
 1. Build l'image Docker
 2. Exécute pytest
 3. **Si les tests passent**, push vers Docker Hub avec les tags :
@@ -50,7 +51,8 @@ Le workflow GitHub Actions (`.github/workflows/ci-cd.yml`) :
 
 ### Secrets requis
 
-Ajoute ces secrets dans GitHub Settings → Secrets:
+Ajoute ces secrets dans GitHub Settings → Secrets :
+
 - `DOCKERHUB_USERNAME` : ton username Docker Hub
 - `DOCKERHUB_TOKEN` : ton access token Docker Hub
 
@@ -59,6 +61,7 @@ Ajoute ces secrets dans GitHub Settings → Secrets:
 Disponibles sur : [hub.docker.com/r/jude1955/system-metrics](https://hub.docker.com/r/jude1955/system-metrics)
 
 Tags :
+
 - `latest` : dernière version stable
 - `<sha>` : version spécifique au commit
 

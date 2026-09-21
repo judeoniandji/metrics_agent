@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,6 +28,24 @@ class MetricsPayload(BaseModel):
     data: dict[str, Any]
 
 
+def _normalize_metrics_payload(payload: dict[str, Any] | MetricsPayload) -> MetricsPayload:
+    """Accepte les payloads bruts et ceux envoyés par l'agent."""
+    if isinstance(payload, MetricsPayload):
+        return payload
+
+    if isinstance(payload, dict) and payload.get("agent") and payload.get("event_type"):
+        try:
+            return MetricsPayload.model_validate(payload)
+        except ValidationError:
+            pass
+
+    return MetricsPayload(
+        agent="unknown-agent",
+        event_type="system_metrics",
+        data=payload,
+    )
+
+
 @app.get("/metrics")
 def get_metrics() -> dict[str, Any]:
     """Retourne toutes les métriques reçues."""
@@ -36,6 +54,7 @@ def get_metrics() -> dict[str, Any]:
         "metrics": received_metrics,
     }
 
+
 @app.get("/health")
 def health() -> dict[str, str]:
     """Vérifie l'état de l'API."""
@@ -43,17 +62,18 @@ def health() -> dict[str, str]:
 
 
 @app.post("/metrics", status_code=status.HTTP_201_CREATED)
-def receive_metrics(payload: MetricsPayload) -> dict[str, Any]:
+def receive_metrics(payload: dict[str, Any]) -> dict[str, Any]:
     """Reçoit et stocke temporairement les métriques."""
+    normalized = _normalize_metrics_payload(payload)
     item = {
         "received_at": datetime.now(timezone.utc).isoformat(),
-        **payload.model_dump(),
+        **normalized.model_dump(),
     }
     received_metrics.append(item)
 
     logger.info(
         "Métriques reçues de %s. Total=%s",
-        payload.agent,
+        normalized.agent,
         len(received_metrics),
     )
 
